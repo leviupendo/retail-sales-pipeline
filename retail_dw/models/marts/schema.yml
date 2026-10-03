@@ -1,0 +1,35 @@
+version: 2
+
+models:
+  - name: fct_sales
+    columns:
+      - name: invoice_no
+        tests:
+          - not_null
+
+      - name: stock_code
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_product')
+              field: stock_code
+
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - invoice_no
+            - stock_code
+
+  - name: dim_product
+    columns:
+      - name: stock_code
+        tests:
+          - unique
+          - not_null
+
+  - name: dim_customer
+    columns:
+      - name: customer_id
+        tests:
+          - unique
+          - not_null

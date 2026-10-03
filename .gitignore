@@ -1,0 +1,19 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# dbt
+retail_dw/target/
+retail_dw/dbt_packages/
+retail_dw/logs/
+
+# Data files (too large / contains raw data, not code)
+*.csv
+
+# OS junk
+.DS_Store
+Thumbs.db
+logs/
+target/
+*.log
