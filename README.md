@@ -54,7 +54,7 @@ stg_online_retail         (view — renamed columns, light cleanup)
 - Referential integrity: every `stock_code` in `fct_sales` exists in `dim_product`
 - Uniqueness on `dim_product.stock_code` and `dim_customer.customer_id`
 
-Dimension tables also carry Postgres `UNIQUE` constraints (added via dbt post-hooks), which both enforce the grain at the database level and let Tableau's query planner treat joins as many-to-one — this fixed a real performance issue (see below).
+Dimension tables also carry Postgres `UNIQUE` constraints (added via dbt post-hooks), which both enforce the grain at the database level and let Tableau's query planner treat joins as many-to-one — this fixed a real performance issue .
 
 ## Data quality findings
 
