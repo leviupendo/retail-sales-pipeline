@@ -59,3 +59,15 @@ Connect Tableau to `127.0.0.1:5433`, database `retail_sales`, schema `marts`.
 - A line with several different unit prices shows the lowest in `unit_price`; `revenue` is always exact.
 - Some product codes only ever have blank descriptions and appear as `Unknown Product - <code>`.
 - Credentials in `docker-compose.yml` are for local development only.
+
+## Key figures
+
+- 541,909 raw rows become 531,223 rows in `fct_sales` (one per invoice + product). Nothing is excluded, so every raw row is accounted for (`source_row_count` sums to 541,909, checked by a test).
+- Date range: 2010-12-01 to 2011-12-09.
+- Total revenue: GBP 9,747,748 including postage, fees and adjustments; GBP 9,793,395 for merchandise only (non-product lines net negative because of discounts and bad-debt adjustments).
+- 4,372 customers (plus a guest row), 3,948 products, 38 countries.
+- 57 tests: 53 pass, 0 fail, 4 warnings that describe known data quirks: 530 lines with mixed unit prices, 1,336 negative quantities on non-cancellation invoices (stock adjustments), 7 lines with two timestamps on the same day, and 2 negative unit prices.
+
+## Dashboard
+
+Three views: Revenue by Month, Top 10 Products by Revenue, Top 10 Countries by Revenue. Filter `is_non_product = false` for merchandise-only views.
