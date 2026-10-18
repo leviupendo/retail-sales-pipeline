@@ -1,27 +1,21 @@
- {{
-  config(
-    post_hook="DO $$ BEGIN
-      ALTER TABLE {{ this }} ADD CONSTRAINT dim_date_pk UNIQUE (invoice_date);
-      EXCEPTION WHEN duplicate_table THEN NULL;
-    END $$;"
-  )
-}}
+-- Proper daily calendar (one row per day, no gaps), built with a date spine.
 
-with dates as (
-    select distinct
-        to_timestamp(invoice_date, 'MM/DD/YYYY HH24:MI') as invoice_date
-    from {{ ref('stg_online_retail') }}
-    where invoice_date is not null
+with spine as (
+    {{ dbt_utils.date_spine(
+        datepart="day",
+        start_date="cast('" ~ var('calendar_start') ~ "' as date)",
+        end_date="cast('" ~ var('calendar_end') ~ "' as date)"
+    ) }}
 )
 
 select
-    invoice_date,
-    invoice_date::date                as calendar_date,
-    extract(year from invoice_date)   as year,
-    extract(month from invoice_date)  as month,
-    extract(day from invoice_date)    as day,
-    extract(quarter from invoice_date) as quarter,
-    to_char(invoice_date, 'Day')      as day_of_week,
-    to_char(invoice_date, 'Month')    as month_name
-
-from dates
+    cast(to_char(date_day, 'YYYYMMDD') as integer)    as date_key,
+    cast(date_day as date)                            as calendar_date,
+    cast(extract(year from date_day) as integer)      as year,
+    cast(extract(quarter from date_day) as integer)   as quarter,
+    cast(extract(month from date_day) as integer)     as month,
+    cast(extract(day from date_day) as integer)       as day,
+    cast(to_char(date_day, 'FMMonth') as text)        as month_name,
+    cast(to_char(date_day, 'FMDay') as text)          as day_of_week,
+    extract(isodow from date_day) in (6, 7)           as is_weekend
+from spine

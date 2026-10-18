@@ -1,0 +1,60 @@
+version: 2
+
+models:
+  - name: stg_online_retail
+    description: "Typed, trimmed copy of the raw table. One row per raw row; nothing removed."
+    columns:
+      - name: invoice_no
+        description: "Invoice number (text). 'C' prefix = cancellation."
+        data_tests: [not_null]
+      - name: stock_code
+        description: "Upper-cased, trimmed product code."
+        data_tests: [not_null]
+      - name: description
+        description: "Trimmed description; null when blank."
+      - name: quantity
+        description: "Units on the line."
+      - name: invoice_ts
+        description: "Invoice timestamp."
+        data_tests: [not_null]
+      - name: unit_price
+        description: "Price per unit, GBP."
+      - name: customer_id
+        description: "Integer customer id; null for guests."
+      - name: country
+        description: "Country on the invoice."
+      - name: is_cancellation
+        description: "True when invoice_no starts with 'C'."
+        data_tests: [not_null]
+
+  - name: int_sales_lines
+    description: "Fact grain: one row per invoice_no + stock_code, before dimension keys are applied."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [invoice_no, stock_code]
+
+  - name: int_product_descriptions_ranked
+    description: "Every usable description per stock code, ranked; rank 1 is used by dim_product."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [stock_code, description]
+
+  - name: int_customer_country
+    description: "One country per customer (most recent invoice)."
+    columns:
+      - name: customer_id
+        data_tests: [unique, not_null]
+
+seeds:
+  - name: non_product_stock_codes
+    description: "Stock codes that are not merchandise (postage, fees, adjustments) with a category."
+    columns:
+      - name: stock_code
+        data_tests: [unique, not_null]
+      - name: category
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Shipping', 'Adjustment', 'Discount', 'Fees']

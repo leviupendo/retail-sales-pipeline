@@ -1,7 +1,46 @@
 version: 2
 
 sources:
-  - name: raw
+  - name: online_retail
+    description: "Raw UK online-retailer transactions (Kaggle 'Online Retail'), loaded as-is by load_data.py. Every column is text; typing happens in staging."
     schema: public
     tables:
       - name: raw_online_retail
+        description: "One row per invoice line exactly as in the CSV (541,909 rows). Not cleaned."
+        columns:
+          - name: InvoiceNo
+            description: "Invoice number. A leading 'C' marks a cancellation."
+            quote: true
+            data_tests:
+              - not_null
+          - name: StockCode
+            description: "Product code (also used for postage, fees and adjustments)."
+            quote: true
+            data_tests:
+              - not_null
+          - name: Description
+            description: "Free-text product name; inconsistent per StockCode."
+            quote: true
+          - name: Quantity
+            description: "Units on the line; negative for returns/adjustments."
+            quote: true
+            data_tests:
+              - not_null
+          - name: InvoiceDate
+            description: "Invoice timestamp as text, format MM/DD/YYYY HH24:MI."
+            quote: true
+            data_tests:
+              - not_null
+          - name: UnitPrice
+            description: "Price per unit in GBP."
+            quote: true
+            data_tests:
+              - not_null
+          - name: CustomerID
+            description: "Customer id; null for guest checkouts (~25% of lines)."
+            quote: true
+          - name: Country
+            description: "Customer country for the invoice."
+            quote: true
+            data_tests:
+              - not_null

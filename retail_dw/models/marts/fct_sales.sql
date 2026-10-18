@@ -1,26 +1,20 @@
-with staging as (
-    select
-        invoice_no,
-        stock_code,
-        customer_id,
-        to_timestamp(invoice_date, 'MM/DD/YYYY HH24:MI') as invoice_date,
-        quantity,
-        unit_price
-    from {{ ref('stg_online_retail') }}
-)
+-- Grain: one row per invoice_no + stock_code.
+-- Nothing is excluded: postage, fees and adjustments stay and are flagged
+-- (is_non_product) so dashboards can filter them; guests have customer_id = -1.
 
 select
-    invoice_no,
-    stock_code,
-    -- customer_id and invoice_date are identical across duplicate rows
-    -- for the same invoice_no + stock_code, so MIN() just picks the one value
-    coalesce(min(customer_id), -1) as customer_id,
-    min(invoice_date)  as invoice_date,
-    sum(quantity)               as quantity,
-    min(unit_price)              as unit_price,
-    sum(quantity * unit_price)  as revenue,
-    case when sum(quantity) < 0 then true else false end as is_return
-
-from staging
-where stock_code not in ('POST', 'M', 'm', 'DOT')
-group by invoice_no, stock_code
+    l.invoice_no::text                                     as invoice_no,
+    l.stock_code::text                                     as stock_code,
+    coalesce(l.customer_id, -1)::integer                   as customer_id,
+    l.country::text                                        as country_name,
+    cast(to_char(l.invoice_ts, 'YYYYMMDD') as integer)     as date_key,
+    l.invoice_ts::timestamp                                as invoice_ts,
+    l.quantity::integer                                    as quantity,
+    l.unit_price::numeric(12, 4)                           as unit_price,
+    l.revenue::numeric(14, 4)                              as revenue,
+    l.is_cancellation                                      as is_cancellation,
+    (np.stock_code is not null)                            as is_non_product,
+    l.source_row_count::integer                            as source_row_count
+from {{ ref('int_sales_lines') }} l
+left join {{ ref('non_product_stock_codes') }} np
+       on np.stock_code = l.stock_code

@@ -1,0 +1,13 @@
+# Copy to ~/.dbt/profiles.yml (Windows: C:\Users\<you>\.dbt\profiles.yml)
+retail_dw:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('DB_HOST', '127.0.0.1') }}"
+      port: "{{ env_var('DB_PORT', '5433') | as_number }}"
+      user: "{{ env_var('DB_USER', 'retail_user') }}"
+      password: "{{ env_var('DB_PASSWORD', 'retail_pass') }}"
+      dbname: "{{ env_var('DB_NAME', 'retail_sales') }}"
+      schema: public
+      threads: 4

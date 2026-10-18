@@ -1,35 +1,186 @@
 version: 2
 
 models:
-  - name: fct_sales
-    columns:
-      - name: invoice_no
-        tests:
-          - not_null
-
-      - name: stock_code
-        tests:
-          - not_null
-          - relationships:
-              to: ref('dim_product')
-              field: stock_code
-
-    tests:
-      - dbt_utils.unique_combination_of_columns:
-          combination_of_columns:
-            - invoice_no
-            - stock_code
-
   - name: dim_product
+    description: "One row per stock code. Non-product codes (postage, fees, adjustments) are included and labelled."
+    config:
+      contract: {enforced: true}
+    constraints:
+      - type: primary_key
+        columns: [stock_code]
     columns:
       - name: stock_code
-        tests:
-          - unique
-          - not_null
+        data_type: text
+        description: "Primary key."
+        data_tests: [unique, not_null]
+      - name: description
+        data_type: text
+        description: "Best available product name (upper-case, longest); 'Unknown Product - <code>' if none."
+        data_tests: [not_null]
+      - name: product_type
+        data_type: text
+        description: "'Product' or 'Non-product'."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Product', 'Non-product']
+      - name: category
+        data_type: text
+        description: "'Product' or the non-product category from the seed (Shipping, Fees, ...)."
+      - name: is_non_product
+        data_type: boolean
+        description: "True for postage, fees, discounts and adjustments."
 
   - name: dim_customer
+    description: "One row per customer plus a -1 guest row. Country is the one on the customer's most recent invoice."
+    config:
+      contract: {enforced: true}
+    constraints:
+      - type: primary_key
+        columns: [customer_id]
     columns:
       - name: customer_id
-        tests:
-          - unique
+        data_type: integer
+        description: "Primary key; -1 = guest / unknown."
+        data_tests: [unique, not_null]
+      - name: country
+        data_type: text
+        description: "Most recent country for the customer; 'Unknown' for the guest row."
+        data_tests: [not_null]
+
+  - name: dim_country
+    description: "One row per invoice country (includes guests' countries)."
+    config:
+      contract: {enforced: true}
+    constraints:
+      - type: primary_key
+        columns: [country_name]
+    columns:
+      - name: country_name
+        data_type: text
+        data_tests: [unique, not_null]
+
+  - name: dim_date
+    description: "Daily calendar, one row per day with no gaps."
+    config:
+      contract: {enforced: true}
+    constraints:
+      - type: primary_key
+        columns: [date_key]
+    columns:
+      - name: date_key
+        data_type: integer
+        description: "Primary key, YYYYMMDD."
+        data_tests: [unique, not_null]
+      - name: calendar_date
+        data_type: date
+        data_tests: [unique, not_null]
+      - name: year
+        data_type: integer
+      - name: quarter
+        data_type: integer
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4]
+                quote: false
+      - name: month
+        data_type: integer
+      - name: day
+        data_type: integer
+      - name: month_name
+        data_type: text
+      - name: day_of_week
+        data_type: text
+      - name: is_weekend
+        data_type: boolean
+
+  - name: fct_sales
+    description: "Grain: one row per invoice_no + stock_code. Nothing excluded; non-product lines are flagged."
+    config:
+      contract: {enforced: true}
+    constraints:
+      - type: primary_key
+        columns: [invoice_no, stock_code]
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [invoice_no, stock_code]
+    columns:
+      - name: invoice_no
+        data_type: text
+        description: "Degenerate dimension (invoice number)."
+        data_tests: [not_null]
+      - name: stock_code
+        data_type: text
+        description: "FK to dim_product."
+        data_tests:
           - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_product')
+                field: stock_code
+      - name: customer_id
+        data_type: integer
+        description: "FK to dim_customer; -1 for guest checkouts."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_customer')
+                field: customer_id
+      - name: country_name
+        data_type: text
+        description: "FK to dim_country; the country on the invoice (kept even for guests)."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_country')
+                field: country_name
+      - name: date_key
+        data_type: integer
+        description: "FK to dim_date (YYYYMMDD)."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: invoice_ts
+        data_type: timestamp
+        description: "Invoice time to the minute."
+        data_tests: [not_null]
+      - name: quantity
+        data_type: integer
+        description: "Summed units (negative for returns/adjustments)."
+        data_tests: [not_null]
+      - name: unit_price
+        data_type: numeric(12,4)
+        description: "Unit price in GBP (lowest seen on the line; see test_line_price_consistent)."
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+              config:
+                severity: warn
+      - name: revenue
+        data_type: numeric(14,4)
+        description: "sum(quantity * unit_price) in GBP; negative for returns."
+        data_tests: [not_null]
+      - name: is_cancellation
+        data_type: boolean
+        description: "True when the invoice number starts with 'C'."
+        data_tests: [not_null]
+      - name: is_non_product
+        data_type: boolean
+        description: "True for postage, fees, discounts and adjustments."
+        data_tests: [not_null]
+      - name: source_row_count
+        data_type: integer
+        description: "How many raw rows were folded into this line."
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1

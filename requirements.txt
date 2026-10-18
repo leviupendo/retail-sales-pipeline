@@ -1,0 +1,5 @@
+dbt-core==1.12.6
+dbt-postgres==1.9.0
+pandas>=2.2
+SQLAlchemy>=2.0
+psycopg2-binary>=2.9

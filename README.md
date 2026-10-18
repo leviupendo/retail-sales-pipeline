@@ -1,77 +1,61 @@
 # Retail Sales Analytics Pipeline
 
-A capstone project building a modern data stack pipeline end-to-end: raw CSV → Postgres → dbt (staging + star schema + tests) → Tableau dashboard.
+End-to-end pipeline: raw CSV → Postgres (Docker) → dbt (staging → intermediate → star schema, with tests) → Tableau dashboard.
 
 ## Dataset
 
-[Online Retail](https://www.kaggle.com/datasets/carrie1/ecommerce-data) — invoice-level transactions from a UK-based online gift retailer, Dec 2010–Dec 2011. 541,909 raw rows, 8 columns.
+[Online Retail](https://www.kaggle.com/datasets/carrie1/ecommerce-data): invoice lines from a UK online gift retailer, 2010-12-01 to 2011-12-09. 541,909 raw rows, 8 columns.
 
-**Grain statement:** one row = one product (`StockCode`) purchased on one invoice (`InvoiceNo`).
-
-## Tech stack
-
-| Tool | Role |
-|---|---|
-| Docker (Postgres 16) | Local database, containerized |
-| Python (pandas, SQLAlchemy) | Raw CSV ingestion into a landing table |
-| dbt (dbt-postgres) | Transformation: staging → star schema, with tests |
-| Tableau Public | Dashboard, connected live/extract to Postgres |
+**Grain of `fct_sales`:** one row per product (`stock_code`) on one invoice (`invoice_no`).
 
 ## Architecture
 
 ```
-data.csv
-   │  (load_data.py)
-   ▼
-raw_online_retail        (Postgres landing table, untouched)
-   │  (dbt: stg_online_retail.sql)
-   ▼
-stg_online_retail         (view — renamed columns, light cleanup)
-   │  (dbt: marts/*.sql)
-   ▼
-┌──────────────┬───────────────┬────────────┐
-│ dim_product  │ dim_customer  │  dim_date  │
-└──────┬───────┴───────┬───────┴─────┬──────┘
-       └───────────────┴─────────────┘
-                     │
-                fct_sales
-       (531,225 rows — one row per
-        invoice + product line item)
+data.csv ──(load_data.py)──▶ public.raw_online_retail     all text, untouched
+                                   │
+                          staging.stg_online_retail       typed + trimmed, no rows removed
+                                   │
+        staging.int_sales_lines · int_product_descriptions_ranked · int_customer_country
+                                   │
+   marts: dim_product  dim_customer  dim_country  dim_date  ──▶  fct_sales
 ```
 
-## Running it locally
+| Layer | Schema | What it does |
+|---|---|---|
+| raw | `public` | Landing table, every column as text |
+| staging / intermediate | `staging` | Typing, trimming, line aggregation, description ranking |
+| marts | `marts` | Star schema with enforced contracts and primary keys |
 
-1. `docker compose up -d` — starts Postgres on port 5433
-2. `python load_data.py` — loads the raw CSV into `raw_online_retail`
-3. `cd retail_dw && dbt run` — builds staging + star schema
-4. `dbt test` — runs 8 data quality tests (all passing)
-5. Connect Tableau to `127.0.0.1:5433`, database `retail_sales`
+## Running it
 
-## dbt tests
+```bash
+python -m venv venv && source venv/bin/activate     # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+docker compose up -d                                  # Postgres on port 5433
+python load_data.py --csv data.csv                    # safe to re-run
+cp retail_dw/profiles.yml.example ~/.dbt/profiles.yml # Windows: C:\Users\<you>\.dbt\
+cd retail_dw
+dbt deps && dbt seed && dbt run && dbt test
+```
 
-- Grain uniqueness: `invoice_no` + `stock_code` combination is unique in `fct_sales`
-- Not-null checks on key columns across all models
-- Referential integrity: every `stock_code` in `fct_sales` exists in `dim_product`
-- Uniqueness on `dim_product.stock_code` and `dim_customer.customer_id`
+Connect Tableau to `127.0.0.1:5433`, database `retail_sales`, schema `marts`.
 
-Dimension tables also carry Postgres `UNIQUE` constraints (added via dbt post-hooks), which both enforce the grain at the database level and let Tableau's query planner treat joins as many-to-one — this fixed a real performance issue .
+## Design decisions
 
-## Data quality findings
+- **Nothing is silently dropped.** Postage, fees and adjustments (`seeds/non_product_stock_codes.csv`) stay in `fct_sales` flagged `is_non_product`; filter them in the dashboard. Guest checkouts (no CustomerID, ~25% of lines) map to `customer_id = -1`.
+- **Country lives on the fact** (`country_name` → `dim_country`), so guest sales keep their real country. `dim_customer.country` is the country on the customer's most recent invoice.
+- **Repeated rows are summed, not deleted.** When one invoice + product appears on several raw rows (e.g. 20 rows of quantity 1), they are treated as separate scans of the same item. `source_row_count` shows how many rows were folded in, and tests check the assumption (one customer, country and calendar date per line).
+- **Cancellations** are invoices whose number starts with `C` (`is_cancellation`). Negative quantity on a non-`C` invoice is a stock adjustment and is reported by a warning test.
+- **Product names:** one stock code can have several descriptions. The ALL-CAPS, longest one wins (lower-case ones are notes like "damaged"), ties broken alphabetically.
+- **`dim_date`** is a gap-free daily calendar built with `dbt_utils.date_spine`; `fct_sales.date_key` (YYYYMMDD) joins to it.
+- **Keys are enforced by dbt model contracts** (primary keys declared in `schema.yml`), not post-hooks, so they are rebuilt correctly on every run.
 
-Several real data issues were found and resolved during this project, not just assumed clean from the source:
+## Tests
 
-- **Duplicate line items**: some invoice/product combinations appeared as many repeated rows of `quantity = 1` instead of one row with the correct total quantity (e.g. one case had 20 identical rows). Fixed by aggregating `fct_sales` with `GROUP BY invoice_no, stock_code` and `SUM(quantity)`.
-- **Guest checkouts**: ~25% of line items have no `CustomerID`. Rather than dropping them (which would understate revenue by ~15%), these are mapped to an explicit `customer_id = -1`, `country = 'Unknown'` row in `dim_customer`, so they remain visible and labeled rather than silently excluded.
-- **Non-product stock codes**: codes like `POST` (postage), `DOT` (dotcom postage), and `M`/`m` (manual adjustment) are not real products and are excluded from `fct_sales` and `dim_product`.
-- **Inconsistent product descriptions**: a given `StockCode` sometimes has several different `Description` values across rows — the real product name, alongside operational notes like "damaged," "check," or blank entries. `dim_product` resolves this by preferring the uppercase, longest description (real product names in this dataset are written in ALL CAPS; operational notes are lowercase), falling back to an explicit `"Unknown Product - <code>"` label when no usable description exists at all.
-- **Tableau performance**: without a declared unique constraint on `dim_date.invoice_date`, Tableau's relationship engine assumed a many-to-many join and queries took minutes instead of seconds, despite the same join running in ~60-300ms directly in Postgres. Resolved by adding `UNIQUE` constraints to all three dimension keys.
+`dbt test` covers: unique/not-null on every dimension key; not-null and relationships on every fact foreign key; fact grain uniqueness; accepted values and ranges; row-count and revenue reconciliation between staging and the fact; consistency of customer, country and calendar date within a line (hard failure), and of timestamp and unit price (warnings); cancellations never adding stock. Price-consistency, timestamp-consistency, negative-price and negative-quantity checks are warnings (known data quirks), the rest are hard failures.
 
-## Key figures
+## Known limitations
 
-- 541,909 raw rows → 531,225 rows in `fct_sales` after de-duplication
-- Total revenue: ~£9.7M (Dec 2010–Nov 2011 partial year)
-- 4,372 unique customers, 4,070 unique products, 38 countries
-
-## Dashboard
-
-Three views: Revenue by Month, Top 10 Products by Revenue, Top 10 Countries by Revenue.
+- A line with several different unit prices shows the lowest in `unit_price`; `revenue` is always exact.
+- Some product codes only ever have blank descriptions and appear as `Unknown Product - <code>`.
+- Credentials in `docker-compose.yml` are for local development only.

@@ -1,15 +1,15 @@
--- Staging model: light cleanup of raw_online_retail.
--- No business logic here yet — just renaming to snake_case and basic typing.
--- This is the single place we'd fix things if the raw source ever changes shape.
+-- Staging: rename, type and trim. No rows are removed here.
+-- Everything is parsed exactly once so downstream models can rely on real types.
 
 select
-    "InvoiceNo"    as invoice_no,
-    "StockCode"    as stock_code,
-    "Description"  as description,
-    "Quantity"     as quantity,
-    "InvoiceDate"  as invoice_date,
-    "UnitPrice"    as unit_price,
-    "CustomerID"   as customer_id,
-    "Country"      as country
+    trim("InvoiceNo")                                          as invoice_no,
+    upper(trim("StockCode"))                                   as stock_code,
+    nullif(trim("Description"), '')                            as description,
+    cast("Quantity" as integer)                                as quantity,
+    to_timestamp(trim("InvoiceDate"), 'MM/DD/YYYY HH24:MI')    as invoice_ts,
+    cast("UnitPrice" as numeric(12, 4))                        as unit_price,
+    cast(cast(nullif(trim("CustomerID"), '') as numeric) as integer) as customer_id,
+    trim("Country")                                            as country,
+    trim("InvoiceNo") like 'C%'                                as is_cancellation
 
-from {{ source('raw', 'raw_online_retail') }}
+from {{ source('online_retail', 'raw_online_retail') }}

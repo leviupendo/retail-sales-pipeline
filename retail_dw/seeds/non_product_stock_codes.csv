@@ -1,0 +1,11 @@
+stock_code,description,category
+POST,Postage,Shipping
+DOT,Dotcom Postage,Shipping
+C2,Carriage,Shipping
+M,Manual Adjustment,Adjustment
+D,Discount,Discount
+S,Samples,Adjustment
+B,Adjust Bad Debt,Adjustment
+BANK CHARGES,Bank Charges,Fees
+AMAZONFEE,Amazon Fee,Fees
+CRUK,CRUK Commission,Fees
