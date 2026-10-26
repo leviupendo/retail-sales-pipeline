@@ -74,3 +74,6 @@ Three views: Revenue by Month, Top 10 Products by Revenue, Top 10 Countries by R
 
 ![Retail Sales Dashboard](docs/dashboard.png)
 
+
+![Retail Sales Dashboard](docs/dashboard.png)
+
