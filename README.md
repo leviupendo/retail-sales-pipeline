@@ -71,3 +71,6 @@ Connect Tableau to `127.0.0.1:5433`, database `retail_sales`, schema `marts`.
 ## Dashboard
 
 Three views: Revenue by Month, Top 10 Products by Revenue, Top 10 Countries by Revenue. Filter `is_non_product = false` for merchandise-only views.
+
+![Retail Sales Dashboard](docs/dashboard.png)
+
